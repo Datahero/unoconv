@@ -19,6 +19,7 @@ from __future__ import print_function
 from distutils.version import LooseVersion
 import getopt
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -518,7 +519,9 @@ class Options:
         self.password = None
         self.pipe = None
         self.port = '2002'
+        self.print_sheet_names = False
         self.server = '127.0.0.1'
+        self.sheet_name = None
         self.showlist = False
         self.stdout = False
         self.template = None
@@ -530,8 +533,8 @@ class Options:
             opts, args = getopt.getopt (args, 'c:Dd:e:f:hi:Llo:np:s:T:t:vV',
                 ['connection=', 'debug', 'doctype=', 'export=', 'format=',
                  'help', 'import', 'listener', 'no-launch', 'output=',
-                 'outputpath', 'password=', 'pipe=', 'port=', 'server=',
-                 'timeout=', 'show', 'stdout', 'template', 'verbose',
+                 'outputpath', 'password=', 'pipe=', 'port=', 'print-sheet-names', 'server=',
+                 'timeout=', 'sheet-name=', 'show', 'stdout', 'template', 'verbose',
                  'version'] )
         except getopt.error as exc:
             print('unoconv: %s, try unoconv -h for a list of all the options' % str(exc))
@@ -600,8 +603,12 @@ class Options:
                 self.pipe = arg
             elif opt in ['-p', '--port']:
                 self.port = arg
+            elif opt in ['--print-sheet-names']:
+                self.print_sheet_names = True
             elif opt in ['-s', '--server']:
                 self.server = arg
+            elif opt in ['--sheet-name']:
+                self.sheet_name = arg
             elif opt in ['--show']:
                 self.showlist = True
             elif opt in ['--stdout']:
@@ -694,10 +701,12 @@ unoconv options:
   -p, --port=port          specify the port (default: 2002)
                              to be used by client or listener
       --password=string    provide a password to decrypt the document
+      --print-sheet-names  print JSON of sheet names to stdout.
   -s, --server=server      specify the server address (default: 127.0.0.1)
                              to be used by client or listener
       --show               list the available output formats
       --stdout             write output to stdout
+      --sheet-name=name    specify sheet name to convert
   -t, --template=file      import the styles from template (.ott)
   -T, --timeout=secs       timeout after secs if connection to listener fails
   -v, --verbose            be more and more verbose (-vvv for debugging)
@@ -809,7 +818,87 @@ class Convertor:
 
         return outputfmt
 
-    def convert(self, inputfn):
+    """
+    print_sheet_names
+    Prints sheet names to STDOUT in JSON format as:
+        {'sheet_names': ['list', 'of', 'sheet', 'names'}
+
+    ref: http://www.linuxjournal.com/content/convert-spreadsheets-csv-files-python-and-pyuno-part-1v2
+    """
+    def print_sheet_names(self, inputfn):
+        global exitcode
+
+        document = None
+
+        if op.verbose > 0:
+            print >>sys.stderr, 'Input file:', inputfn
+
+        if not os.path.exists(inputfn):
+            print >>sys.stderr, 'unoconv: file `%s\' does not exist.' % inputfn
+            exitcode = 1
+
+        try:
+            ### Load inputfile
+            phase = "detect sheets"
+            inputprops = UnoProps(Hidden=True, ReadOnly=True, UpdateDocMode=QUIET_UPDATE)
+
+            inputurl = unohelper.absolutize(self.cwd, unohelper.systemPathToFileUrl(inputfn))
+            document = self.desktop.loadComponentFromURL( inputurl , "_blank", 0, inputprops )
+
+            if not document:
+                raise UnoException("The document '%s' could not be opened." % inputurl, None)
+
+            if (not hasattr(document, 'getSheets')):
+                raise UnoException("The document '%s' was not opened as a spreadsheet." % inputurl, None)
+
+            sheets = document.getSheets()
+            print json.dumps({'sheet_names' : sheets.ElementNames})
+
+            phase = "dispose"
+            document.dispose()
+            document.close(True)
+
+
+        except SystemError, e:
+            error("unoconv: SystemError during %s phase:\n%s" % (phase, e))
+            exitcode = 1
+
+        except RuntimeException, e:
+            error("unoconv: RuntimeException during %s phase:\nOffice probably died. %s" % (phase, e))
+            exitcode = 6
+
+        except DisposedException, e:
+            error("unoconv: DisposedException during %s phase:\nOffice probably died. %s" % (phase, e))
+            exitcode = 7
+
+        except IllegalArgumentException, e:
+            error("UNO IllegalArgument during %s phase:\nSource file cannot be read. %s" % (phase, e))
+            exitcode = 8
+
+        except IOException, e:
+#            for attr in dir(e): print '%s: %s', (attr, getattr(e, attr))
+            error("unoconv: IOException during %s phase:\n%s" % (phase, e.Message))
+            exitcode = 3
+
+        except CannotConvertException, e:
+#            for attr in dir(e): print '%s: %s', (attr, getattr(e, attr))
+            error("unoconv: CannotConvertException during %s phase:\n%s" % (phase, e.Message))
+            exitcode = 4
+
+        except UnoException, e:
+            if hasattr(e, 'ErrCode'):
+                error("unoconv: UnoException during %s phase in %s (ErrCode %d)" % (phase, repr(e.__class__), e.ErrCode))
+                exitcode = e.ErrCode
+                pass
+            if hasattr(e, 'Message'):
+                error("unoconv: UnoException during %s phase:\n%s" % (phase, e.Message))
+                exitcode = 5
+            else:
+                error("unoconv: UnoException during %s phase in %s" % (phase, repr(e.__class__)))
+                exitcode = 2
+                pass
+
+    def convert(self, inputfn, sheet_name=None):
         global exitcode
 
         document = None
@@ -827,7 +916,10 @@ class Convertor:
             phase = "import"
 
             ### Load inputfile
-            inputprops = UnoProps(Hidden=True, ReadOnly=True, UpdateDocMode=QUIET_UPDATE)
+            # Note: Hidden=True was removed since it doesn't allow specific
+            # sheet selection
+            # ref: http://www.linuxjournal.com/content/convert-spreadsheets-csv-files-python-and-pyuno-part-1v2
+            inputprops = UnoProps(ReadOnly=True, UpdateDocMode=QUIET_UPDATE)
 
 #            if op.password:
 #                info = UnoProps(algorithm-name="PBKDF2", salt="salt", iteration-count=1024, hash="hash")
@@ -847,6 +939,16 @@ class Convertor:
 
             if not document:
                 raise UnoException("The document '%s' could not be opened." % inputurl, None)
+
+            ### Set sheet to convert
+            # Ref: http://www.linuxjournal.com/content/convert-spreadsheets-csv-files-python-and-pyuno-part-1v2
+            if sheet_name:
+                phase = "activating-sheet"
+                sheets = document.getSheets()
+                sheet = sheets.getByName(sheet_name)
+
+                controller = document.getCurrentController()
+                controller.setActiveSheet(sheet)
 
             ### Import style template
             phase = "import-style"
@@ -948,6 +1050,10 @@ class Convertor:
 
         except DisposedException as e:
             error("unoconv: DisposedException during %s phase:\nOffice probably died. %s" % (phase, e))
+            exitcode = 7
+
+        except NoSuchElementException, e:
+            error("NoSuchElementException during %s phase:\nSpecified sheet could not be found. %s" % (phase, e))
             exitcode = 7
 
         except IllegalArgumentException as e:
@@ -1085,7 +1191,10 @@ def main():
         if op.filenames:
             convertor = Convertor()
             for inputfn in op.filenames:
-                convertor.convert(inputfn)
+                if (op.print_sheet_names):
+                    convertor.print_sheet_names(inputfn)
+                else:
+                    convertor.convert(inputfn, op.sheet_name)
 
     except NoConnectException as e:
         error("unoconv: could not find an existing connection to LibreOffice at %s:%s." % (op.server, op.port))
@@ -1130,6 +1239,7 @@ if __name__ == '__main__':
     ### Now that we have found a working pyuno library, let's import some classes
     from com.sun.star.beans import PropertyValue
     from com.sun.star.connection import NoConnectException
+    from com.sun.star.container import NoSuchElementException
     from com.sun.star.document.UpdateDocMode import QUIET_UPDATE
     from com.sun.star.lang import DisposedException, IllegalArgumentException
     from com.sun.star.io import IOException, XOutputStream
