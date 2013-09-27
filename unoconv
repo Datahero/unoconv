@@ -852,40 +852,40 @@ class Convertor:
                 raise UnoException("The document '%s' was not opened as a spreadsheet." % inputurl, None)
 
             sheets = document.getSheets()
-            print json.dumps({'sheet_names' : sheets.ElementNames})
+            print(json.dumps({'sheet_names' : sheets.ElementNames}))
 
             phase = "dispose"
             document.dispose()
             document.close(True)
 
 
-        except SystemError, e:
+        except SystemError as e:
             error("unoconv: SystemError during %s phase:\n%s" % (phase, e))
             exitcode = 1
 
-        except RuntimeException, e:
+        except RuntimeException as e:
             error("unoconv: RuntimeException during %s phase:\nOffice probably died. %s" % (phase, e))
             exitcode = 6
 
-        except DisposedException, e:
+        except DisposedException as e:
             error("unoconv: DisposedException during %s phase:\nOffice probably died. %s" % (phase, e))
             exitcode = 7
 
-        except IllegalArgumentException, e:
+        except IllegalArgumentException as e:
             error("UNO IllegalArgument during %s phase:\nSource file cannot be read. %s" % (phase, e))
             exitcode = 8
 
-        except IOException, e:
+        except IOException as e:
 #            for attr in dir(e): print '%s: %s', (attr, getattr(e, attr))
             error("unoconv: IOException during %s phase:\n%s" % (phase, e.Message))
             exitcode = 3
 
-        except CannotConvertException, e:
+        except CannotConvertException as e:
 #            for attr in dir(e): print '%s: %s', (attr, getattr(e, attr))
             error("unoconv: CannotConvertException during %s phase:\n%s" % (phase, e.Message))
             exitcode = 4
 
-        except UnoException, e:
+        except UnoException as e:
             if hasattr(e, 'ErrCode'):
                 error("unoconv: UnoException during %s phase in %s (ErrCode %d)" % (phase, repr(e.__class__), e.ErrCode))
                 exitcode = e.ErrCode
@@ -1052,7 +1052,7 @@ class Convertor:
             error("unoconv: DisposedException during %s phase:\nOffice probably died. %s" % (phase, e))
             exitcode = 7
 
-        except NoSuchElementException, e:
+        except NoSuchElementException as e:
             error("NoSuchElementException during %s phase:\nSpecified sheet could not be found. %s" % (phase, e))
             exitcode = 7
 
