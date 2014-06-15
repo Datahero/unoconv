@@ -818,6 +818,19 @@ class Convertor:
 
         return outputfmt
 
+    def is_html_document(self, inputfn):
+        """Check whether document is an html document.
+
+        Determines whether the document specified by `inputfn` is an html document (and should use the
+        "calc_HTML_WebQuery" input filter).
+        """
+
+        input_file = open(inputfn, "rU")
+        first_characters = input_file.read(5)
+        is_html = first_characters == "<head" or first_characters == "<html"
+        input_file.close()
+        return is_html
+
     """
     print_sheet_names
     Prints sheet names to STDOUT in JSON format as:
@@ -841,6 +854,10 @@ class Convertor:
             ### Load inputfile
             phase = "detect sheets"
             inputprops = UnoProps(Hidden=True, ReadOnly=True, UpdateDocMode=QUIET_UPDATE)
+
+            # If it's an html document, force the "calc_HTML_WebQuery" filter so that it's imported correctly
+            if self.is_html_document(inputfn):
+                inputprops += UnoProps(FilterName="calc_HTML_WebQuery")
 
             inputurl = unohelper.absolutize(self.cwd, unohelper.systemPathToFileUrl(inputfn))
             document = self.desktop.loadComponentFromURL( inputurl , "_blank", 0, inputprops )
@@ -920,6 +937,10 @@ class Convertor:
             # sheet selection
             # ref: http://www.linuxjournal.com/content/convert-spreadsheets-csv-files-python-and-pyuno-part-1v2
             inputprops = UnoProps(ReadOnly=True, UpdateDocMode=QUIET_UPDATE)
+
+            # If it's an html document, force the "calc_HTML_WebQuery" filter so that it's imported correctly
+            if self.is_html_document(inputfn):
+                inputprops += UnoProps(FilterName="calc_HTML_WebQuery")
 
 #            if op.password:
 #                info = UnoProps(algorithm-name="PBKDF2", salt="salt", iteration-count=1024, hash="hash")
