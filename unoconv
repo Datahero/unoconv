@@ -826,7 +826,15 @@ class Convertor:
         """
 
         input_file = open(inputfn, "rU")
-        first_characters = input_file.read(5)
+
+        try:
+            first_characters = input_file.read(5)
+        except:
+            # If we can't read characters then fallback to default behavior of assuming this is not an html file.
+            # Python 2 does not throw an error when reading binary files as utf8, but python 3 does.
+            input_file.close()
+            return False
+
         is_html = first_characters == "<head" or first_characters == "<html"
         input_file.close()
         return is_html
