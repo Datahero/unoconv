@@ -966,6 +966,10 @@ class Convertor:
             inputurl = unohelper.absolutize(self.cwd, unohelper.systemPathToFileUrl(inputfn))
             document = self.desktop.loadComponentFromURL( inputurl , "_blank", 0, inputprops )
 
+            # Force all cells to recalcualte if we are able to. This will get rid of errors in cells.
+            if document.calculateAll:
+                document.calculateAll()
+
             if not document:
                 raise UnoException("The document '%s' could not be opened." % inputurl, None)
 
