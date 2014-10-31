@@ -967,8 +967,10 @@ class Convertor:
             document = self.desktop.loadComponentFromURL( inputurl , "_blank", 0, inputprops )
 
             # Force all cells to recalcualte if we are able to. This will get rid of errors in cells.
-            if document.calculateAll:
+            try:
                 document.calculateAll()
+            except AttributeError:
+                pass
 
             if not document:
                 raise UnoException("The document '%s' could not be opened." % inputurl, None)
